@@ -74,7 +74,7 @@ generateConstraints info = {-# SCC "ConsGen" #-} execState act $ initCGI info
 
 consAct info penv
   = do γ   <- initEnv info penv
-       foldM consCB γ (cbs info)
+       foldM (consCB True) γ (cbs info)
        hcs <- hsCs  <$> get 
        hws <- hsWfs <$> get
        fcs <- concat <$> mapM splitC hcs 
@@ -690,10 +690,11 @@ instance Freshable RReft where
   true (U r _)      = liftM uTop (true r)  
   refresh (U r _)   = liftM uTop (refresh r) 
 
-instance Freshable RefType where
+instance (Freshable r, F.Reftable r) => Freshable (RRType r) where
   fresh   = errorstar "fresh RefType"
   refresh = refreshRefType
   true    = trueRefType 
+
 
 trueRefType (RAllT α t)       
   = liftM (RAllT α) (true t)
@@ -709,6 +710,7 @@ trueRefType (RAppTy t t' _)
 trueRefType t                
   = return t
 
+refreshRefType :: (Freshable r, F.Reftable r) => RRType r -> CG (RRType r)
 refreshRefType (RAllT α t)       
   = liftM (RAllT α) (refresh t)
 refreshRefType (RAllP π t)       
@@ -755,34 +757,39 @@ addTyConInfo = mapBot . expandRApp
 -------------------------------------------------------------------
 
 -------------------------------------------------------------------
-consCB :: CGEnv -> CoreBind -> CG CGEnv 
+consCB :: Bool -> CGEnv -> CoreBind -> CG CGEnv 
 -------------------------------------------------------------------
 
-consCB γ (Rec xes) 
+consCB isTopLevel γ (Rec xes) 
   = do xets   <- forM xes $ \(x, e) -> liftM (x, e,) (varTemplate γ (x, Just e))
-       let xts = [(x, to) | (x, _, to) <- xets, not (isGrty x)]
+       let xts = [(x, varTyToMaybe to) | (x, _, to) <- xets, not (isGrty x)]
        γ'     <- foldM extender (γ `withRecs` (fst <$> xts)) xts
-       mapM_ (consBind True γ') xets
-       return γ' 
+       ts     <- mapM (consBind isTopLevel True γ') xets
+       foldM extender γ $ zip xs ts
     where isGrty x = (varSymbol x) `memberREnv` (grtys γ)
+          xs       = fst $ unzip xes
 
-consCB γ (NonRec x e)
+consCB isTopLevel γ (NonRec x e)
   = do to  <- varTemplate γ (x, Nothing) 
-       to' <- consBind False γ (x, e, to)
-       extender γ (x, to')
+       to' <- consBind isTopLevel False γ (x, e, to)
+       extender γ $ (x, to')
 
-consBind isRec γ (x, e, Just spect) 
+consBind isTopLevel isRec γ (x, e, NoTy) 
+   = do tr <- unifyVar γ x <$> consE (γ `setBind` x) e
+        let t = if isTopLevel then fmap (\_ -> F.top) tr else tr
+        addIdA x (defAnn isRec t)
+        return $ Just t
+
+consBind isTopLevel isRec γ (x, e, varTy) 
   = do let γ' = (γ `setLoc` getSrcSpan x) `setBind` x
        γπ    <- foldM addPToEnv γ' πs
        cconsE γπ e spect
-       addIdA x (defAnn isRec spect) 
-       return Nothing
-  where πs   = snd3 $ bkUniv spect
-
-consBind isRec γ (x, e, Nothing) 
-   = do t <- unifyVar γ x <$> consE (γ `setBind` x) e
-        addIdA x (defAnn isRec t)
-        return $ Just t
+       addIdA x (defAnn isRec t) 
+       return $ Just t
+  where πs    = snd3 $ bkUniv spect
+        spect = fromVarTy varTy
+        t     | isTopLevel && isFreshTy varTy = fmap (\_ -> F.top) spect
+              | otherwise                     = spect
 
 defAnn True  = RDf
 defAnn False = Def
@@ -797,15 +804,28 @@ extender γ _           = return γ
 addBinders γ0 x' cbs   = foldM (++=) (γ0 -= x') [("addBinders", x, t) | (x, t) <- cbs]
 
 
-varTemplate :: CGEnv -> (Var, Maybe CoreExpr) -> CG (Maybe SpecType)
+data VarTy a = SpecTy a | FreshTy a | NoTy
+
+varTyToMaybe (SpecTy t)  = Just t
+varTyToMaybe (FreshTy t) = Just t
+varTyToMaybe _           = Nothing
+
+isFreshTy (FreshTy _) = True
+isFreshTy _           = False
+
+fromVarTy (SpecTy t)  = t
+fromVarTy (FreshTy t) = t
+fromVarTy _           = errorstar "Constraint.fromVarTy on NoTy"
+
+varTemplate :: CGEnv -> (Var, Maybe CoreExpr) -> CG (VarTy SpecType)
 varTemplate γ (x, eo)
   = case (eo, lookupREnv (varSymbol x) (grtys γ)) of
-      (_, Just t) -> return $ Just t
+      (_, Just t) -> return $ SpecTy t
       (Just e, _) -> do t  <- unifyVar γ x <$> freshTy_pretty e (exprType e)
                         addW (WfC γ t)
                         addKuts t
-                        return $ Just t
-      (_,      _) -> return Nothing
+                        return $ FreshTy t
+      (_,      _) -> return NoTy
 
 unifyVar γ x rt = unify (getPrType γ (varSymbol x)) rt
 
@@ -818,11 +838,11 @@ cconsE :: CGEnv -> Expr Var -> SpecType -> CG ()
 -------------------------------------------------------------------
 
 cconsE γ (Let b e) t    
-  = do γ'  <- consCB γ b
+  = do γ'  <- consCB False γ b
        cconsE γ' e t 
 
 cconsE γ (Case e x _ cases) t 
-  = do γ'  <- consCB γ $ NonRec x e
+  = do γ'  <- consCB False γ $ NonRec x e
        forM_ cases $ cconsCase γ' x t nonDefAlts 
     where nonDefAlts = [a | (a, _, _) <- cases, a /= DEFAULT]
 
