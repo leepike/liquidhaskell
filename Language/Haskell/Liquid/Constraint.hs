@@ -51,7 +51,7 @@ import Data.List (foldl')
 import qualified Language.Haskell.Liquid.CTags      as Tg
 import qualified Language.Fixpoint.Types            as F
 
-import Language.Haskell.Liquid.Types            hiding (binds, Loc, loc, freeTyVars)  
+import Language.Haskell.Liquid.Types            hiding (Loc, loc, freeTyVars)  
 import Language.Haskell.Liquid.Bare
 import Language.Haskell.Liquid.Annotate
 import Language.Haskell.Liquid.GhcInterface

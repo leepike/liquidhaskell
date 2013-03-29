@@ -85,7 +85,7 @@ makeGhcSpec' cfg name vars env spec
                              , freeSyms   = syms' 
                              , tcEmbeds   = embs 
                              , qualifiers = Ms.qualifiers spec 
-                             , tgtVars    = makeTargetVars vars (binds cfg)
+                             , tgtVars    = makeTargetVars vars (checkVars cfg)
                              }
 
 
@@ -194,8 +194,14 @@ makeMeasureSpec env m = execBare mkSpec env
         m'     = first (mapReft ur_reft) m
 
 makeTargetVars :: [Var] -> [String] -> TargetVars
-makeTargetVars = undefined 
-
+makeTargetVars vs []     = AllVars
+makeTargetVars vs checks = applyNonNull (Only $ M.elems xm) grumble xs' 
+  where 
+    xs'                  = filter (not . (`M.member` xm)) xs 
+    grumble              = errorstar . ("Unknown Target Binders: " ++) . show . map symbolString 
+    xm                   = M.fromList $ map (\(v,x,_) -> (x,v)) $ joinIds vs ((,()) <$> xs) 
+    xs                   = stringSymbol <$> checks
+  
 makeAssumeSpec :: BareEnv -> [Var] -> [(LocSymbol, BareType)] -> IO [(Var, Located SpecType)]
 makeAssumeSpec env vs xbs = execBare mkAspec env 
   where 

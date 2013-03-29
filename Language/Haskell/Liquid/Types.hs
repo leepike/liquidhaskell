@@ -68,9 +68,9 @@ import Var
 -----------------------------------------------------------------------------
 
 data Config = Config { 
-    files :: [FilePath] -- ^ source files to check
-  , idirs :: [FilePath] -- ^ path to directory for including specs
-  , binds :: ![String]  -- ^ top-level binders to check (empty means check ALL) 
+    files     :: [FilePath] -- ^ source files to check
+  , idirs     :: [FilePath] -- ^ path to directory for including specs
+  , checkVars :: [String]   -- ^ top-level binders to check (empty means check ALL) 
   } deriving (Data, Typeable, Show, Eq)
 
 
@@ -237,9 +237,9 @@ instance NFData RTyVar where
 newtype RTyVar = RTV TyVar
 
 data RTyCon = RTyCon 
-  { rTyCon     :: !TyCon         -- GHC Type Constructor
-  , rTyConPs   :: ![RPVar]          -- Predicate Parameters
-  , rTyConInfo :: !TyConInfo        -- TyConInfo
+  { rTyCon     :: !TyCon      -- ^ GHC Type Constructor
+  , rTyConPs   :: ![RPVar]    -- ^ Predicate Parameters
+  , rTyConInfo :: !TyConInfo  -- ^ TyConInfo
   }
   -- deriving (Data, Typeable)
 

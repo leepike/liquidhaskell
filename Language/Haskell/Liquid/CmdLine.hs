@@ -14,23 +14,24 @@ import System.Console.CmdArgs
 ---------------------------------------------------------------------------------
 
 config = Config { 
-   files = def &= typ "TARGET" 
-               &= args 
-               &= typFile 
+   files     = def &= typ "TARGET" 
+                   &= args 
+                   &= typFile 
  
- , idirs = def &= typDir 
-               &= help "Paths to Spec Include Directory " 
+ , idirs     = def &= typDir 
+                   &= help "Paths to Spec Include Directory " 
  
- , binds = def &= help "Top-level binders to verify (DEFAULT = all)" 
+ , checkVars = def &= typ "VARIABLE"
+                   &= help "Top-level binders to verify (DEFAULT = all)" 
  
  } &= verbosity 
    &= program "liquid" 
-   &= help    "Refinement Types for Haskell" 
+   &= help    "Liquid/Refinement  Types for Haskell" 
    &= summary "LiquidHaskell © Copyright 2009-13 Regents of the University of California." 
-   &= details [ "LiquidHaskell is a Refinement Type based verifier for Haskell"
+   &= details [ "LiquidHaskell is a Liquid/Refinement Type based verifier for Haskell"
               , ""
-              , "To check a Haskell file foo.hs, type:"
-              , "  liquid foo.hs "
+              , "To verify a Haskell file path/to/foo.hs, type:"
+              , "  liquid path/to/foo.hs "
               ]
 
 getOpts :: IO Config 

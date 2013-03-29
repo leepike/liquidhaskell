@@ -51,10 +51,10 @@ Incremental Checking
 
 1. Command Line Arguments  
     - Specify WHICH binders to verify [DEFAULT = ALL]  
-    - liquid tests/pos/goo.hs -check foo bar baz 
-    - Print out vars/hs-types <-------------------------- HEREHEREHEREHERE
+    - liquid tests/pos/hello.hs -check abz, incr 
+    - Print out vars/hs-types 
 
-2. CONSGEN for subset 
+2. CONSGEN for subset <-------------------------- HEREHEREHEREHERE
 
 3. CONSGEN for subset using TRUE for all other functions
 
