@@ -9,4 +9,7 @@ incr x  = x + 1
 {-@ decr :: (Num a) => x:a -> {v: a | v < x}        @-}
 decr x  = x - 1 
 
+plusplus :: Int -> Int
+plusplus = incr . incr
+
 

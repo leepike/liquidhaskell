@@ -55,6 +55,8 @@ Incremental Checking
     - Print out vars/hs-types 
 
 2. CONSGEN for subset <-------------------------- HEREHEREHEREHERE
+    + env? [with TRUE]
+    + FILTER coreBinds
 
 3. CONSGEN for subset using TRUE for all other functions
 

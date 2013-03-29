@@ -70,8 +70,9 @@ import Control.DeepSeq
 
 generateConstraints :: GhcInfo -> CGInfo
 generateConstraints info = {-# SCC "ConsGen" #-} execState act $ initCGI info
-  where act = consAct (info {cbs = fst pds}) (snd pds)
-        pds = generatePredicates info
+  where 
+    act                  = consAct (info {cbs = fst pds}) (snd pds)
+    pds                  = generatePredicates info
 
 consAct info penv
   = do γ   <- initEnv info penv
@@ -84,19 +85,65 @@ consAct info penv
 
 initEnv :: GhcInfo -> F.SEnv PrType -> CG CGEnv  
 initEnv info penv
-  = do defaults <- forM (impVars info) $ \x -> liftM (x,) (trueTy $ varType x)
-       tyi      <- tyConInfo <$> get 
-       let f0    = grty info          -- asserted refinements     (for defined vars)
-       f0'      <- grtyTop info       -- default TOP reftype      (for exported vars without spec) 
-       let f1    = defaults           -- default TOP reftype      (for all vars) 
-       let f2    = assm info          -- assumed refinements      (for imported vars)
-       let f3    =  ctor' $ spec info -- constructor refinements  (for measures) 
-       let bs    = (map (unifyts' tyi penv)) <$> [f0 ++ f0', f1, f2, f3]
-       let γ0    = measEnv (spec info) penv (head bs) (cbs info)
+  = do tyi    <- tyConInfo <$> get 
+       f0     <- guarantyBinds info 
+       f1     <- importedBinds info 
+       f2     <- assumeBinds   info 
+       f3     <- measCtorBinds info 
+       let bs  = (map (unifyts' tyi penv)) <$> [f0, f1, f2, f3]
+       let γ0  = measEnv (spec info) penv (head bs) (cbs info)
        foldM (++=) γ0 [("initEnv", x, y) | (x, y) <- concat bs]
-       -- return    $ foldl' (++=) γ0 [("initEnv", x, y) | (x, y) <- concat bs] 
 
-ctor' = map (mapSnd val) . ctor 
+-- initEnv info penv
+--   = do defaults <- forM (impVars info) $ \x -> liftM (x,) (trueTy $ varType x)
+--        tyi      <- tyConInfo <$> get 
+--        let f0    = grty info          -- asserted refinements     (for defined vars)
+--        f0'      <- grtyTop info       -- default TOP reftype      (for exported vars without spec) 
+--        let f1    = defaults           -- default TOP reftype      (for all vars) 
+--        let f2    = assm info          -- assumed refinements      (for imported vars)
+--        let f3    =  ctor' $ spec info -- constructor refinements  (for measures) 
+--        let bs    = (map (unifyts' tyi penv)) <$> [f0 ++ f0', f1, f2, f3]
+--        let γ0    = measEnv (spec info) penv (head bs) (cbs info)
+--        foldM (++=) γ0 [("initEnv", x, y) | (x, y) <- concat bs]
+
+-- ctor' = map (mapSnd val) . ctor
+-- 
+-- grtyTop info     = forM topVs $ \v -> (v,) <$> (trueTy $ varType v) -- val $ varSpecType v) | v <- defVars info, isTop v]
+--   where
+--     topVs        = filter isTop $ defVars info
+--     isTop v      = isExportedId v && not (v `S.member` useVs) && not (v `S.member` sigVs)
+--     useVs        = S.fromList $ useVars info
+--     sigVs        = S.fromList $ [v | (v,_) <- tySigs $ spec info]
+
+
+
+-- | Binds for variables imported WITHOUT assumed refined types
+importedBinds    :: GhcInfo -> CG [(Var, SpecType)]
+importedBinds    = trueBinds . impVars 
+
+-- | Binds for variables whose types must be VERIFIED
+guarantyBinds    :: GhcInfo -> CG [(Var, SpecType)]
+guarantyBinds i  =  (grty i ++)         -- top-level vars with asserted spec
+                 <$> trueBinds topVs    -- top-level exported/unused vars 
+  where
+    topVs        = filter isTop $ defVars i
+    isTop v      = isExportedId v && not (v `S.member` useVs) && not (v `S.member` sigVs)
+    useVs        = S.fromList $ useVars i
+    sigVs        = S.fromList $ [v | (v,_) <- tySigs $ spec i]
+
+-- | Binds for imported variables whose types have been ASSUMED
+assumeBinds      :: GhcInfo -> CG [(Var, SpecType)]
+assumeBinds      = return . assm
+
+-- | Binds for data constructors generated from measure definitions 
+measCtorBinds    :: GhcInfo -> CG [(Var, SpecType)]
+measCtorBinds    = return . map (mapSnd val) . ctor . spec  
+
+-- | True Types
+trueBinds vs     = zip vs <$> mapM (trueTy . varType) vs
+
+
+---------------------------------------------------------------------------
 
 unifyts' tyi penv = (second (addTyConInfo tyi)) . (unifyts penv)
 
@@ -109,7 +156,7 @@ measEnv sp penv xts cbs
         , renv  = fromListREnv   $ second (uRType . val) <$> meas sp 
         , syenv = F.fromListSEnv $ freeSyms sp 
         , penv  = penv 
-        , fenv  = F.emptyIBindEnv -- F.fromListSEnv $ second (rTypeSortedReft tce) <$> meas sp 
+        , fenv  = F.emptyIBindEnv
         , recs  = S.empty 
         , invs  = mkRTyConInv    $ invariants sp
         , grtys = fromListREnv xts 
@@ -126,13 +173,6 @@ assm_grty f info = [ (x, val t) | (x, t) <- sigs, x `S.member` xs ]
   where 
     xs           = S.fromList $ f info 
     sigs         = tySigs     $ spec info  
-
-grtyTop info     = forM topVs $ \v -> (v,) <$> (trueTy $ varType v) -- val $ varSpecType v) | v <- defVars info, isTop v]
-  where
-    topVs        = filter isTop $ defVars info
-    isTop v      = isExportedId v && not (v `S.member` useVs) && not (v `S.member` sigVs)
-    useVs        = S.fromList $ useVars info
-    sigVs        = S.fromList $ [v | (v,_) <- tySigs $ spec info]
 
 
 ------------------------------------------------------------------------
